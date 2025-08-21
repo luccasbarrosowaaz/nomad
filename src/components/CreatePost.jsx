@@ -24,9 +24,8 @@ import React, { useState, useRef, useEffect } from 'react';
       const { profile, fetchProfile } = useProfileStore();
       const { toast } = useToast();
       const [content, setContent] = useState('');
-      const [mediaFile, setMediaFile] = useState(null);
-      const [mediaPreview, setMediaPreview] = useState(null);
-      const [mediaType, setMediaType] = useState(null);
+      const [mediaFiles, setMediaFiles] = useState([]);
+      const [mediaPreviews, setMediaPreviews] = useState([]);
       const [isSubmitting, setIsSubmitting] = useState(false);
       const [location, setLocation] = useState(null);
       const [isLocationModalOpen, setIsLocationModalOpen] = useState(false);
@@ -56,29 +55,62 @@ import React, { useState, useRef, useEffect } from 'react';
         const youtubeRegex = /(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/(?:[^\/\n\s]+\/\S+\/|(?:v|e(?:mbed)?)\/|\S*?[?&]v=)|youtu\.be\/)([a-zA-Z0-9_-]{11})/;
         const match = text.match(youtubeRegex);
         if (match && match[1]) {
-          setMediaType('youtube');
-          setMediaPreview(`https://www.youtube.com/watch?v=${match[1]}`);
-        } else if (mediaType === 'youtube' && !text.includes('youtube.com') && !text.includes('youtu.be')) {
-          removeMedia();
+          const youtubeUrl = `https://www.youtube.com/watch?v=${match[1]}`;
+          const existingYoutube = mediaPreviews.find(preview => preview.type === 'youtube');
+          if (!existingYoutube) {
+            setMediaFiles(prev => [...prev, { type: 'youtube', url: youtubeUrl }]);
+            setMediaPreviews(prev => [...prev, { type: 'youtube', url: youtubeUrl }]);
+          }
+        } else if (!text.includes('youtube.com') && !text.includes('youtu.be')) {
+          // Remove YouTube links if text no longer contains them
+          setMediaFiles(prev => prev.filter(file => file.type !== 'youtube'));
+          setMediaPreviews(prev => prev.filter(preview => preview.type !== 'youtube'));
         }
       };
 
       const handleFileChange = (e, type) => {
-        const file = e.target.files[0];
-        if (file) {
-          setMediaFile(file);
-          setMediaType(type);
-          setMediaPreview(URL.createObjectURL(file));
+        const files = Array.from(e.target.files);
+        if (files.length === 0) return;
+
+        // Limit total media to 4 items
+        const currentCount = mediaFiles.length;
+        const availableSlots = 4 - currentCount;
+        
+        if (availableSlots <= 0) {
+          toast({
+            variant: 'destructive',
+            title: 'Limite atingido',
+            description: 'Você pode adicionar no máximo 4 mídias por post.',
+          });
+          return;
         }
+
+        const filesToAdd = files.slice(0, availableSlots);
+        
+        filesToAdd.forEach(file => {
+          const preview = URL.createObjectURL(file);
+          setMediaFiles(prev => [...prev, { type, file }]);
+          setMediaPreviews(prev => [...prev, { type, url: preview, file }]);
+        });
+
+        if (files.length > availableSlots) {
+          toast({
+            title: 'Alguns arquivos não foram adicionados',
+            description: `Apenas ${availableSlots} arquivo(s) foram adicionados devido ao limite de 4 mídias.`,
+          });
+        }
+
+        // Clear the input
+        e.target.value = '';
       };
 
-      const removeMedia = () => {
-        if (mediaPreview && mediaPreview.startsWith('blob:')) {
-            URL.revokeObjectURL(mediaPreview);
+      const removeMedia = (index) => {
+        const mediaToRemove = mediaPreviews[index];
+        if (mediaToRemove && mediaToRemove.url && mediaToRemove.url.startsWith('blob:')) {
+          URL.revokeObjectURL(mediaToRemove.url);
         }
-        setMediaFile(null);
-        setMediaPreview(null);
-        setMediaType(null);
+        setMediaFiles(prev => prev.filter((_, i) => i !== index));
+        setMediaPreviews(prev => prev.filter((_, i) => i !== index));
       };
 
       const uploadFile = async (file) => {
@@ -102,7 +134,7 @@ import React, { useState, useRef, useEffect } from 'react';
       };
 
       const handleSubmit = async () => {
-        if (!content && !mediaFile && !location && mediaType !== 'youtube') {
+        if (!content && mediaFiles.length === 0 && !location) {
           toast({
             variant: 'destructive',
             title: 'Nada para postar!',
@@ -112,20 +144,22 @@ import React, { useState, useRef, useEffect } from 'react';
         }
 
         setIsSubmitting(true);
-        let mediaUrl = null;
-        let finalMediaType = mediaType;
+        const mediaUrls = [];
         
         try {
-          if (mediaFile) {
-            mediaUrl = await uploadFile(mediaFile);
-          } else if (mediaType === 'youtube' && mediaPreview) {
-            mediaUrl = mediaPreview;
+          for (const mediaItem of mediaFiles) {
+            if (mediaItem.file) {
+              const uploadedUrl = await uploadFile(mediaItem.file);
+              mediaUrls.push({ url: uploadedUrl, type: mediaItem.type });
+            } else if (mediaItem.type === 'youtube') {
+              mediaUrls.push({ url: mediaItem.url, type: 'youtube' });
+            }
           }
 
           const postData = {
             user_id: user.id,
             content,
-            media_urls: mediaUrl ? [{ url: mediaUrl, type: finalMediaType }] : null,
+            media_urls: mediaUrls.length > 0 ? mediaUrls : null,
             location_id: location ? location.id : null,
           };
 
@@ -147,7 +181,14 @@ import React, { useState, useRef, useEffect } from 'react';
           toast({ title: 'Post criado com sucesso!' });
           if(onPostCreated) onPostCreated(data);
           setContent('');
-          removeMedia();
+          // Clear all media
+          mediaPreviews.forEach(preview => {
+            if (preview.url && preview.url.startsWith('blob:')) {
+              URL.revokeObjectURL(preview.url);
+            }
+          });
+          setMediaFiles([]);
+          setMediaPreviews([]);
           setLocation(null);
 
         } catch (error) {
@@ -186,23 +227,53 @@ import React, { useState, useRef, useEffect } from 'react';
                   className="w-full bg-input border-border text-foreground text-base resize-none"
                   rows={2}
                 />
-                {mediaPreview && (
-                  <div className="mt-4 relative">
-                    {mediaType === 'image' ? (
-                      <img src={mediaPreview} alt="Preview" className="rounded-lg max-h-80 w-auto" />
+                {mediaPreviews.length > 0 && (
+                  <div className="mt-4 space-y-2">
+                    {mediaPreviews.length === 1 ? (
+                      <div className="relative">
+                        {mediaPreviews[0].type === 'image' ? (
+                          <img src={mediaPreviews[0].url} alt="Preview" className="rounded-lg max-h-80 w-full object-cover" />
+                        ) : (
+                          <div className="rounded-lg overflow-hidden max-h-80 aspect-video">
+                            <ReactPlayer url={mediaPreviews[0].url} controls width="100%" height="100%" />
+                          </div>
+                        )}
+                        <Button
+                          variant="destructive"
+                          size="icon"
+                          className="absolute top-2 right-2 h-7 w-7"
+                          onClick={() => removeMedia(0)}
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
+                      </div>
                     ) : (
-                      <div className="rounded-lg overflow-hidden max-h-80 aspect-video">
-                        <ReactPlayer url={mediaPreview} controls width="100%" height="100%" />
+                      <div className="grid grid-cols-2 gap-2">
+                        {mediaPreviews.map((preview, index) => (
+                          <div key={index} className="relative aspect-square">
+                            {preview.type === 'image' ? (
+                              <img src={preview.url} alt={`Preview ${index + 1}`} className="rounded-lg w-full h-full object-cover" />
+                            ) : preview.type === 'youtube' ? (
+                              <div className="rounded-lg overflow-hidden w-full h-full bg-black flex items-center justify-center">
+                                <ReactPlayer url={preview.url} width="100%" height="100%" light={true} />
+                              </div>
+                            ) : (
+                              <div className="rounded-lg overflow-hidden w-full h-full">
+                                <ReactPlayer url={preview.url} width="100%" height="100%" light={true} />
+                              </div>
+                            )}
+                            <Button
+                              variant="destructive"
+                              size="icon"
+                              className="absolute top-1 right-1 h-6 w-6"
+                              onClick={() => removeMedia(index)}
+                            >
+                              <X className="h-3 w-3" />
+                            </Button>
+                          </div>
+                        ))}
                       </div>
                     )}
-                    <Button
-                      variant="destructive"
-                      size="icon"
-                      className="absolute top-2 right-2 h-7 w-7"
-                      onClick={removeMedia}
-                    >
-                      <X className="h-4 w-4" />
-                    </Button>
                   </div>
                 )}
                 {location && (
@@ -218,14 +289,38 @@ import React, { useState, useRef, useEffect } from 'react';
                 )}
                 <div className="flex justify-between items-center mt-4">
                   <div className="flex items-center space-x-1">
-                    <Button variant="ghost" size="icon" onClick={() => imageInputRef.current.click()}>
+                    <Button 
+                      variant="ghost" 
+                      size="icon" 
+                      onClick={() => imageInputRef.current.click()}
+                      disabled={mediaFiles.length >= 4}
+                    >
                       <Camera className="h-5 w-5 text-green-500" />
                     </Button>
-                    <input type="file" ref={imageInputRef} accept="image/*" className="hidden" onChange={(e) => handleFileChange(e, 'image')} />
-                    <Button variant="ghost" size="icon" onClick={() => videoInputRef.current.click()}>
+                    <input 
+                      type="file" 
+                      ref={imageInputRef} 
+                      accept="image/*" 
+                      multiple 
+                      className="hidden" 
+                      onChange={(e) => handleFileChange(e, 'image')} 
+                    />
+                    <Button 
+                      variant="ghost" 
+                      size="icon" 
+                      onClick={() => videoInputRef.current.click()}
+                      disabled={mediaFiles.length >= 4}
+                    >
                       <Video className="h-5 w-5 text-blue-500" />
                     </Button>
-                    <input type="file" ref={videoInputRef} accept="video/*" className="hidden" onChange={(e) => handleFileChange(e, 'video')} />
+                    <input 
+                      type="file" 
+                      ref={videoInputRef} 
+                      accept="video/*" 
+                      multiple 
+                      className="hidden" 
+                      onChange={(e) => handleFileChange(e, 'video')} 
+                    />
                     <Button variant="ghost" size="icon" onClick={() => setIsLocationModalOpen(true)}>
                       <MapPin className="h-5 w-5 text-orange-500" />
                     </Button>
