@@ -1,0 +1,21 @@
+{
+  "name": "Nomad Connect",
+  "short_name": "Nomad",
+  "description": "Rede Social para Viajantes Aventureiros",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#1E293B",
+  "theme_color": "#00A9E0",
+  "icons": [
+    {
+      "src": "/icons/icon-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/icons/icon-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
