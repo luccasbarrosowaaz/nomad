@@ -1,15 +1,14 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import { Helmet } from 'react-helmet';
-import { Search, MapPin, Filter, Star, Users, Compass, X, Power, Droplets, Bed, Utensils as CookingPot, Dog, Car } from 'lucide-react';
+import { Search, MapPin, Star, Users, Compass, Power, Droplets, Bed, Utensils as CookingPot, Dog, Car, ChevronDown, ChevronUp } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/components/ui/use-toast';
 import { useNavigate, Link } from 'react-router-dom';
 import { supabase } from '@/lib/customSupabaseClient';
 import CheckInModal from '@/components/CheckInModal';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import LocationFilters from '@/components/LocationFilters';
+import ImprovedLocationFilters from '@/components/ImprovedLocationFilters';
 
 const Explore = () => {
   const { toast } = useToast();
@@ -19,7 +18,7 @@ const Explore = () => {
   const [locations, setLocations] = useState([]);
   const [loading, setLoading] = useState(true);
   const [isCheckInModalOpen, setIsCheckInModalOpen] = useState(false);
-  const [isFilterOpen, setIsFilterOpen] = useState(false);
+  const [showFilters, setShowFilters] = useState(false);
   const [filters, setFilters] = useState({
     state: '',
     city: '',
@@ -27,7 +26,6 @@ const Explore = () => {
     amenities: [],
     address: '',
   });
-  const [activeFilterCount, setActiveFilterCount] = useState(0);
 
   const fetchLocations = useCallback(async () => {
     setLoading(true);
@@ -71,7 +69,7 @@ const Explore = () => {
     setLoading(false);
   }, [toast, searchTerm, filters]);
   
-  const updateActiveFilterCount = useCallback(() => {
+  const getActiveFilterCount = useCallback(() => {
     let count = 0;
     if (filters.state) count++;
     if (filters.city) count++;
@@ -80,7 +78,7 @@ const Explore = () => {
     if (filters.amenities && filters.amenities.length > 0) {
       count += filters.amenities.length;
     }
-    setActiveFilterCount(count);
+    return count;
   }, [filters]);
 
   useEffect(() => {
@@ -90,18 +88,14 @@ const Explore = () => {
     return () => clearTimeout(delayDebounceFn);
   }, [fetchLocations, searchTerm]);
 
-  useEffect(() => {
-    updateActiveFilterCount();
-  }, [filters, updateActiveFilterCount]);
 
 
   const handleCheckIn = () => {
     setIsCheckInModalOpen(true);
-  };
   
-  const handleApplyFilters = () => {
+  const handleApplyFilters = (newFilters) => {
+    setFilters(newFilters);
     fetchLocations();
-    setIsFilterOpen(false);
   };
 
   const handleClearFilters = () => {
@@ -148,37 +142,25 @@ const Explore = () => {
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-5 w-5" />
               <Input placeholder="Buscar por local, cidade, endereço..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="pl-10 bg-input border-input text-foreground" />
             </div>
-            <div className="flex items-center space-x-2">
+            <div className="flex items-center space-x-2 flex-wrap gap-2">
               <Button onClick={handleCheckIn} className="w-full md:w-auto nomad-gradient text-white">
                 <Compass className="h-4 w-4 mr-2" />
                 Check-in
               </Button>
 
-              <Popover open={isFilterOpen} onOpenChange={setIsFilterOpen}>
-                <PopoverTrigger asChild>
-                  <Button variant="outline" className="relative">
-                    <Filter className="h-4 w-4 mr-2" />
-                    Filtros
-                    {activeFilterCount > 0 && (
-                      <span className="absolute -top-2 -right-2 h-5 w-5 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs">
-                        {activeFilterCount}
-                      </span>
-                    )}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-80" align="end">
-                  <div className="flex justify-between items-center mb-4">
-                     <h3 className="font-semibold text-lg">Filtros de Locais</h3>
-                      <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setIsFilterOpen(false)}><X className="h-4 w-4" /></Button>
-                  </div>
-                  <LocationFilters
-                    filters={filters}
-                    onFilterChange={setFilters}
-                    onApply={handleApplyFilters}
-                    onClear={handleClearFilters}
-                  />
-                </PopoverContent>
-              </Popover>
+              <Button 
+                variant="outline" 
+                onClick={() => setShowFilters(!showFilters)}
+                className="relative"
+              >
+                {showFilters ? <ChevronUp className="h-4 w-4 mr-2" /> : <ChevronDown className="h-4 w-4 mr-2" />}
+                Filtros
+                {getActiveFilterCount() > 0 && (
+                  <span className="absolute -top-2 -right-2 h-5 w-5 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs">
+                    {getActiveFilterCount()}
+                  </span>
+                )}
+              </Button>
 
               <div className="hidden sm:flex space-x-1 bg-secondary rounded-lg p-1">
                  <Button onClick={() => setView('cards')} variant={view === 'cards' ? 'default' : 'ghost'} size="sm" className={view === 'cards' ? 'nomad-gradient text-white' : 'text-muted-foreground'}>Cards</Button>
@@ -186,6 +168,22 @@ const Explore = () => {
               </div>
             </div>
           </div>
+          
+          {showFilters && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              exit={{ opacity: 0, height: 0 }}
+              transition={{ duration: 0.3 }}
+              className="mt-4 pt-4 border-t border-border"
+            >
+              <ImprovedLocationFilters
+                filters={filters}
+                onFilterChange={handleApplyFilters}
+                onClear={handleClearFilters}
+              />
+            </motion.div>
+          )}
         </motion.div>
 
         {view === 'cards' ? (
