@@ -1,14 +1,46 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import { Helmet } from 'react-helmet';
-import { Search, MapPin, Star, Users, Compass, Power, Droplets, Bed, Utensils as CookingPot, Dog, Car, ChevronDown, ChevronUp } from 'lucide-react';
+import { Search, MapPin, Star, Users, Compass, Power, Droplets, Bed, Utensils as CookingPot, Dog, Car, ChevronDown, ChevronUp, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { useToast } from '@/components/ui/use-toast';
 import { useNavigate, Link } from 'react-router-dom';
 import { supabase } from '@/lib/customSupabaseClient';
 import CheckInModal from '@/components/CheckInModal';
-import ImprovedLocationFilters from '@/components/ImprovedLocationFilters';
+
+const states = [
+  { value: 'AC', label: 'Acre' },
+  { value: 'AL', label: 'Alagoas' },
+  { value: 'AP', label: 'Amapá' },
+  { value: 'AM', label: 'Amazonas' },
+  { value: 'BA', label: 'Bahia' },
+  { value: 'CE', label: 'Ceará' },
+  { value: 'DF', label: 'Distrito Federal' },
+  { value: 'ES', label: 'Espírito Santo' },
+  { value: 'GO', label: 'Goiás' },
+  { value: 'MA', label: 'Maranhão' },
+  { value: 'MT', label: 'Mato Grosso' },
+  { value: 'MS', label: 'Mato Grosso do Sul' },
+  { value: 'MG', label: 'Minas Gerais' },
+  { value: 'PA', label: 'Pará' },
+  { value: 'PB', label: 'Paraíba' },
+  { value: 'PR', label: 'Paraná' },
+  { value: 'PE', label: 'Pernambuco' },
+  { value: 'PI', label: 'Piauí' },
+  { value: 'RJ', label: 'Rio de Janeiro' },
+  { value: 'RN', label: 'Rio Grande do Norte' },
+  { value: 'RS', label: 'Rio Grande do Sul' },
+  { value: 'RO', label: 'Rondônia' },
+  { value: 'RR', label: 'Roraima' },
+  { value: 'SC', label: 'Santa Catarina' },
+  { value: 'SP', label: 'São Paulo' },
+  { value: 'SE', label: 'Sergipe' },
+  { value: 'TO', label: 'Tocantins' }
+];
 
 const Explore = () => {
   const { toast } = useToast();
@@ -18,7 +50,6 @@ const Explore = () => {
   const [locations, setLocations] = useState([]);
   const [loading, setLoading] = useState(true);
   const [isCheckInModalOpen, setIsCheckInModalOpen] = useState(false);
-  const [showFilters, setShowFilters] = useState(false);
   const [filters, setFilters] = useState({
     state: '',
     city: '',
@@ -26,6 +57,17 @@ const Explore = () => {
     amenities: [],
     address: '',
   });
+  const [stateSearch, setStateSearch] = useState('');
+  const [citySearch, setCitySearch] = useState('');
+  const [cities, setCities] = useState([]);
+
+  const filteredStates = states.filter(state => 
+    state.label.toLowerCase().includes(stateSearch.toLowerCase())
+  );
+
+  const filteredCities = cities.filter(city => 
+    city.toLowerCase().includes(citySearch.toLowerCase())
+  );
 
   const fetchLocations = useCallback(async () => {
     setLoading(true);
@@ -68,6 +110,33 @@ const Explore = () => {
     }
     setLoading(false);
   }, [toast, searchTerm, filters]);
+
+  const fetchCities = useCallback(async (state) => {
+    if (!state) {
+      setCities([]);
+      return;
+    }
+
+    const { data, error } = await supabase
+      .from('check_in_locations')
+      .select('city')
+      .eq('state', state)
+      .not('city', 'is', null);
+
+    if (!error && data) {
+      const uniqueCities = [...new Set(data.map(item => item.city))].sort();
+      setCities(uniqueCities);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (filters.state) {
+      fetchCities(filters.state);
+    } else {
+      setCities([]);
+      setFilters(prev => ({ ...prev, city: '' }));
+    }
+  }, [filters.state, fetchCities]);
   
   const getActiveFilterCount = useCallback(() => {
     let count = 0;
@@ -88,10 +157,9 @@ const Explore = () => {
     return () => clearTimeout(delayDebounceFn);
   }, [fetchLocations, searchTerm]);
 
-
-
   const handleCheckIn = () => {
     setIsCheckInModalOpen(true);
+  };
   
   const handleApplyFilters = (newFilters) => {
     setFilters(newFilters);
@@ -140,26 +208,17 @@ const Explore = () => {
           <div className="flex flex-col md:flex-row gap-4">
             <div className="flex-1 relative">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-5 w-5" />
-              <Input placeholder="Buscar por local, cidade, endereço..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="pl-10 bg-input border-input text-foreground" />
+              <Input 
+                placeholder="Buscar por local, cidade, endereço..." 
+                value={searchTerm} 
+                onChange={(e) => setSearchTerm(e.target.value)} 
+                className="pl-10 bg-input border-input text-foreground text-base" 
+              />
             </div>
             <div className="flex items-center space-x-2 flex-wrap gap-2">
               <Button onClick={handleCheckIn} className="w-full md:w-auto nomad-gradient text-white">
                 <Compass className="h-4 w-4 mr-2" />
                 Check-in
-              </Button>
-
-              <Button 
-                variant="outline" 
-                onClick={() => setShowFilters(!showFilters)}
-                className="relative"
-              >
-                {showFilters ? <ChevronUp className="h-4 w-4 mr-2" /> : <ChevronDown className="h-4 w-4 mr-2" />}
-                Filtros
-                {getActiveFilterCount() > 0 && (
-                  <span className="absolute -top-2 -right-2 h-5 w-5 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs">
-                    {getActiveFilterCount()}
-                  </span>
-                )}
               </Button>
 
               <div className="hidden sm:flex space-x-1 bg-secondary rounded-lg p-1">
@@ -168,22 +227,171 @@ const Explore = () => {
               </div>
             </div>
           </div>
+        </motion.div>
+
+        {/* Filtros sempre visíveis e organizados */}
+        <motion.div 
+          initial={{ opacity: 0, y: 20 }} 
+          animate={{ opacity: 1, y: 0 }} 
+          transition={{ delay: 0.15 }}
+          className="bg-card p-4 rounded-xl shadow-sm border border-border"
+        >
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-semibold text-foreground">Filtros de Busca</h3>
+            {getActiveFilterCount() > 0 && (
+              <Button variant="outline" onClick={handleClearFilters} size="sm">
+                Limpar ({getActiveFilterCount()})
+              </Button>
+            )}
+          </div>
           
-          {showFilters && (
-            <motion.div
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: 'auto' }}
-              exit={{ opacity: 0, height: 0 }}
-              transition={{ duration: 0.3 }}
-              className="mt-4 pt-4 border-t border-border"
-            >
-              <ImprovedLocationFilters
-                filters={filters}
-                onFilterChange={handleApplyFilters}
-                onClear={handleClearFilters}
+          <div className="space-y-4">
+            {/* Busca por endereço */}
+            <div className="space-y-2">
+              <Label htmlFor="address-filter">Endereço ou Local Específico</Label>
+              <Input 
+                id="address-filter"
+                name="address" 
+                placeholder="Digite parte do endereço ou nome do local" 
+                value={filters.address || ''} 
+                onChange={(e) => setFilters({ ...filters, address: e.target.value })}
+                className="text-base"
               />
-            </motion.div>
-          )}
+            </div>
+
+            {/* Estado e Cidade */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="state-filter">Estado</Label>
+                <div className="relative">
+                  <Input
+                    id="state-filter"
+                    placeholder="Digite o nome do estado..."
+                    value={stateSearch}
+                    onChange={(e) => setStateSearch(e.target.value)}
+                    className="text-base"
+                  />
+                  {stateSearch && filteredStates.length > 0 && (
+                    <div className="absolute top-full left-0 right-0 z-50 bg-card border border-border rounded-md shadow-lg max-h-48 overflow-y-auto mt-1">
+                      {filteredStates.map((state) => (
+                        <button
+                          key={state.value}
+                          onClick={() => {
+                            setFilters({ ...filters, state: state.value, city: '' });
+                            setStateSearch('');
+                          }}
+                          className="w-full text-left px-3 py-2 hover:bg-secondary text-sm border-b border-border last:border-b-0"
+                        >
+                          {state.label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                {filters.state && (
+                  <div className="flex items-center justify-between bg-primary/10 px-2 py-1 rounded text-sm">
+                    <span className="text-primary font-medium">
+                      {states.find(s => s.value === filters.state)?.label}
+                    </span>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-5 w-5 text-primary"
+                      onClick={() => setFilters({ ...filters, state: '', city: '' })}
+                    >
+                      <X className="h-3 w-3" />
+                    </Button>
+                  </div>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="city-filter">Cidade</Label>
+                <div className="relative">
+                  <Input
+                    id="city-filter"
+                    placeholder={filters.state ? "Digite o nome da cidade..." : "Selecione um estado primeiro"}
+                    value={citySearch}
+                    onChange={(e) => setCitySearch(e.target.value)}
+                    disabled={!filters.state}
+                    className="text-base"
+                  />
+                  {citySearch && filteredCities.length > 0 && (
+                    <div className="absolute top-full left-0 right-0 z-50 bg-card border border-border rounded-md shadow-lg max-h-48 overflow-y-auto mt-1">
+                      {filteredCities.map((city) => (
+                        <button
+                          key={city}
+                          onClick={() => {
+                            setFilters({ ...filters, city: city });
+                            setCitySearch('');
+                          }}
+                          className="w-full text-left px-3 py-2 hover:bg-secondary text-sm border-b border-border last:border-b-0"
+                        >
+                          {city}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                {filters.city && (
+                  <div className="flex items-center justify-between bg-primary/10 px-2 py-1 rounded text-sm">
+                    <span className="text-primary font-medium">{filters.city}</span>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-5 w-5 text-primary"
+                      onClick={() => setFilters({ ...filters, city: '' })}
+                    >
+                      <X className="h-3 w-3" />
+                    </Button>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Tipo de local e comodidades em linha */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="location_type_filter">Tipo de Local</Label>
+                <Select
+                  value={filters.location_type || 'all'}
+                  onValueChange={(value) => setFilters({ ...filters, location_type: value === 'all' ? '' : value })}
+                >
+                  <SelectTrigger id="location_type_filter" className="bg-input text-foreground text-base">
+                    <SelectValue placeholder="Selecione um tipo" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todos os Tipos</SelectItem>
+                    <SelectItem value="camping_selvagem">Camping Selvagem</SelectItem>
+                    <SelectItem value="ponto_de_apoio">Ponto de Apoio</SelectItem>
+                    <SelectItem value="estacionamento">Estacionamento</SelectItem>
+                    <SelectItem value="posto_combustivel">Posto de Combustível</SelectItem>
+                    <SelectItem value="outro">Outro</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Comodidades</Label>
+                <ToggleGroup 
+                  type="multiple" 
+                  className="flex-wrap justify-start gap-2" 
+                  value={filters.amenities || []} 
+                  onValueChange={(value) => setFilters({ ...filters, amenities: value })}
+                >
+                  <ToggleGroupItem value="allow_sleep" aria-label="Permite dormir" className="flex items-center gap-2 text-sm">
+                    <Bed className="h-4 w-4" /> Dormir
+                  </ToggleGroupItem>
+                  <ToggleGroupItem value="has_power" aria-label="Tem energia" className="flex items-center gap-2 text-sm">
+                    <Power className="h-4 w-4" /> Energia
+                  </ToggleGroupItem>
+                  <ToggleGroupItem value="has_water" aria-label="Tem água" className="flex items-center gap-2 text-sm">
+                    <Droplets className="h-4 w-4" /> Água
+                  </ToggleGroupItem>
+                </ToggleGroup>
+              </div>
+            </div>
+          </div>
         </motion.div>
 
         {view === 'cards' ? (
